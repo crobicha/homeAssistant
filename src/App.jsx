@@ -221,7 +221,7 @@ function SetupScreen({ onConnect }) {
 }
 
 // ── Main dashboard ────────────────────────────────────────────────────────────
-function Dashboard({ haUrl, token, initialStates }) {
+function Dashboard({ haUrl, token, initialStates, onDisconnect }) {
   const [unit, setUnit] = useState("°C");
   const [rangeHours, setRangeHours] = useState(168);
   const [allSensors, setAllSensors] = useState([]);   // { id, label, room, type }
@@ -392,6 +392,11 @@ function Dashboard({ haUrl, token, initialStates }) {
             padding: "6px 12px", background: "#0c1929", border: "1px solid #1e3a5f",
             borderRadius: 8, color: "#64748b", cursor: "pointer", fontSize: 12,
           }}>{loading ? "⟳" : "↺"}</button>
+
+          <button onClick={onDisconnect} style={{
+            padding: "6px 12px", background: "#0c1929", border: "1px solid #1e3a5f",
+            borderRadius: 8, color: "#475569", cursor: "pointer", fontSize: 12,
+          }} title="Disconnect">⏏</button>
         </div>
       </div>
 
@@ -544,10 +549,52 @@ function formatXTick(t, hours) {
 // ── App root ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [conn, setConn] = useState(null);
+  const [booting, setBooting] = useState(true);
 
-  if (!conn) {
-    return <SetupScreen onConnect={(url, token, states) => setConn({ url, token, states })} />;
+  // On load, try saved credentials
+  useEffect(() => {
+    const saved = localStorage.getItem("ha-dashboard-creds");
+    if (saved) {
+      try {
+        const { url, token } = JSON.parse(saved);
+        fetchAllStates(url, token)
+            .then(states => setConn({ url, token, states }))
+            .catch(() => localStorage.removeItem("ha-dashboard-creds"))
+            .finally(() => setBooting(false));
+      } catch {
+        setBooting(false);
+      }
+    } else {
+      setBooting(false);
+    }
+  }, []);
+
+  function handleConnect(url, token, states) {
+    localStorage.setItem("ha-dashboard-creds", JSON.stringify({ url, token }));
+    setConn({ url, token, states });
   }
 
-  return <Dashboard haUrl={conn.url} token={conn.token} initialStates={conn.states} />;
+  function handleDisconnect() {
+    localStorage.removeItem("ha-dashboard-creds");
+    setConn(null);
+  }
+
+  if (booting) return (
+      <div style={{ minHeight: "100vh", background: "#020810", display: "flex",
+        alignItems: "center", justifyContent: "center", color: "#334155",
+        fontFamily: "'DM Mono', monospace", fontSize: 14 }}>
+        Connecting to Home Assistant…
+      </div>
+  );
+
+  if (!conn) return <SetupScreen onConnect={handleConnect} />;
+
+  return (
+      <Dashboard
+          haUrl={conn.url}
+          token={conn.token}
+          initialStates={conn.states}
+          onDisconnect={handleDisconnect}
+      />
+  );
 }
